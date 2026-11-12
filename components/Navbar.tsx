@@ -39,6 +39,20 @@ export default function Navbar() {
       >
         Favorit
       </Link>
+
+      {/* --- TAMBAHKAN MENU PESANAN DI SINI --- */}
+      <Link
+        href="/pesanan"
+        className={
+          pathname === "/pesanan"
+            ? "font-bold text-blue-600"
+            : "text-slate-600 hover:text-blue-600"
+        }
+      >
+        Pesanan
+      </Link>
+      {/* ------------------------------------- */}
+
       <Link
         href="/tentang"
         className={

@@ -1,14 +1,22 @@
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { events, rupiah } from "@/data/events";
 import FormPesan from "@/components/FormPesan";
 import TombolFavorit from "@/components/TombolFavorit";
 
-export default async function Detail({ params }: PageProps<"/event/[id]">) {
+// Ubah nama fungsi menjadi DetailEventPage (untuk menghindari error timestamp performance Next.js)
+export default async function DetailEventPage({
+  params,
+}: PageProps<"/event/[id]">) {
   const { id } = await params;
   const event = events.find((e) => e.id === Number(id));
   if (!event) notFound();
 
   const sisa = event.kuota - event.terisi;
+
+  // Baca cookie untuk mengisi nama awal otomatis
+  const namaAwal = (await cookies()).get("nama")?.value ?? "";
+
   return (
     <article className="rounded-xl border bg-white p-6">
       <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
@@ -22,11 +30,12 @@ export default async function Detail({ params }: PageProps<"/event/[id]">) {
       <p className="text-slate-600">
         Sisa {sisa} dari {event.kuota} tiket
       </p>
-      
+
       {/* Tambah TombolFavorit */}
       <TombolFavorit id={event.id} />
 
-      <FormPesan event={event} />
+      {/* Kirim namaAwal ke FormPesan */}
+      <FormPesan event={event} namaAwal={namaAwal} />
     </article>
   );
 }

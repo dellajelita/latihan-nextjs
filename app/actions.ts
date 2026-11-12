@@ -1,7 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { events } from "@/data/events";
-import { tambahPesanan } from "@/data/pesanan";
+import { pesanan, tambahPesanan } from "@/data/pesanan";
 
 export type HasilPesan = {
   berhasil: boolean;
@@ -22,7 +24,6 @@ export async function pesanTiket(
 
   console.log("Pesanan masuk:", nama, jumlah);
 
-  // Pura-pura server sedang sibuk, supaya tombol "Memproses..." terlihat
   await new Promise((r) => setTimeout(r, 800));
 
   const event = events.find((e) => e.id === eventId);
@@ -67,10 +68,44 @@ export async function pesanTiket(
     waktu: new Date().toLocaleString("id-ID"),
   });
 
+  // Simpan nama ke cookie selama 30 hari
+  const toples = await cookies();
+  toples.set("nama", nama, { maxAge: 60 * 60 * 24 * 30 });
+
+  revalidatePath("/event");
+  revalidatePath(`/event/${eventId}`);
+  revalidatePath("/pesanan");
+
   return {
     berhasil: true,
     pesan: `Pesanan #${nomor} tersimpan: ${jumlah} tiket untuk ${nama}.`,
     galat: {},
     isian: { nama: "", email: "" },
   };
+}
+
+export async function batalkanPesanan(formData: FormData) {
+  const nomorStr = formData.get("nomor");
+  if (!nomorStr) return;
+
+  const nomor = Number(nomorStr);
+  const cookieStore = await cookies();
+  const namaSaya = cookieStore.get("nama")?.value;
+
+  const i = pesanan.findIndex((p) => p.nomor === nomor);
+
+  if (i === -1) return;
+  if (namaSaya && pesanan[i].nama.toLowerCase() !== namaSaya.toLowerCase())
+    return;
+
+  const [batal] = pesanan.splice(i, 1);
+  const event = events.find((e) => e.id === batal.eventId);
+  if (event) {
+    event.terisi -= batal.jumlah;
+    if (event.terisi < 0) event.terisi = 0;
+  }
+
+  revalidatePath("/event");
+  revalidatePath(`/event/${batal.eventId}`);
+  revalidatePath("/pesanan");
 }
