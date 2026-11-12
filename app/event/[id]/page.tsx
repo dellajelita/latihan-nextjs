@@ -1,22 +1,19 @@
-import { cookies } from "next/headers";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { events, rupiah } from "@/data/events";
+import { cookies } from "next/headers";
+import { rupiah } from "@/data/events";
+import { ambilEvent } from "@/data/ambil";
 import FormPesan from "@/components/FormPesan";
 import TombolFavorit from "@/components/TombolFavorit";
+import EventTerkait from "@/components/EventTerkait";
 
-// Ubah nama fungsi menjadi DetailEventPage (untuk menghindari error timestamp performance Next.js)
-export default async function DetailEventPage({
-  params,
-}: PageProps<"/event/[id]">) {
+export default async function Detail({ params }: PageProps<"/event/[id]">) {
   const { id } = await params;
-  const event = events.find((e) => e.id === Number(id));
+  const event = await ambilEvent(Number(id));
   if (!event) notFound();
 
   const sisa = event.kuota - event.terisi;
-
-  // Baca cookie untuk mengisi nama awal otomatis
   const namaAwal = (await cookies()).get("nama")?.value ?? "";
-
   return (
     <article className="rounded-xl border bg-white p-6">
       <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
@@ -30,12 +27,16 @@ export default async function DetailEventPage({
       <p className="text-slate-600">
         Sisa {sisa} dari {event.kuota} tiket
       </p>
-
-      {/* Tambah TombolFavorit */}
       <TombolFavorit id={event.id} />
-
-      {/* Kirim namaAwal ke FormPesan */}
       <FormPesan event={event} namaAwal={namaAwal} />
+      <section className="mt-6">
+        <h2 className="font-semibold">Event terkait</h2>
+        <Suspense
+          fallback={<p className="text-slate-400">Memuat event terkait...</p>}
+        >
+          <EventTerkait event={event} />
+        </Suspense>
+      </section>
     </article>
   );
 }
