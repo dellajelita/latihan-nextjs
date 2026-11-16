@@ -1,111 +1,50 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { cookies } from "next/headers";
+import { pesanan } from "@/data/pesanan";
 import { events } from "@/data/events";
-import { pesanan, tambahPesanan } from "@/data/pesanan";
+import { redirect } from "next/navigation";
 
-export type HasilPesan = {
-  berhasil: boolean;
-  pesan: string;
-  galat: { nama?: string; email?: string; jumlah?: string };
-  isian: { nama: string; email: string };
-};
-
-export async function pesanTiket(
-  _sebelum: HasilPesan,
-  formData: FormData,
-): Promise<HasilPesan> {
+export async function tambahPesanan(formData: FormData) {
   const eventId = Number(formData.get("eventId"));
-  const nama = String(formData.get("nama") ?? "").trim();
-  const email = String(formData.get("email") ?? "").trim();
-  const jumlah = Number(formData.get("jumlah"));
-  const isian = { nama, email };
+  const nama = (formData.get("nama") as string) || "Della Jelita";
+  const email = (formData.get("email") as string) || "";
+  const jumlah = Number(formData.get("jumlah")) || 1;
 
-  console.log("Pesanan masuk:", nama, jumlah);
+  const event = events.find((e) => Number(e.id) === eventId);
+  if (!event) return;
 
-  await new Promise((r) => setTimeout(r, 800));
-
-  const event = events.find((e) => e.id === eventId);
-  if (!event) {
-    return {
-      berhasil: false,
-      pesan: "Event tidak ditemukan.",
-      galat: {},
-      isian,
-    };
-  }
-
-  const sisa = event.kuota - event.terisi;
-  const galat: HasilPesan["galat"] = {};
-
-  if (nama.length < 3) galat.nama = "Nama minimal 3 huruf.";
-  else if (nama.length > 40) galat.nama = "Nama maksimal 40 huruf.";
-
-  if (!email.includes("@")) galat.email = "Email harus memuat tanda @.";
-  if (!Number.isInteger(jumlah) || jumlah < 1)
-    galat.jumlah = "Jumlah tiket minimal 1.";
-  else if (jumlah > 5) galat.jumlah = "Maksimal 5 tiket per pesanan.";
-  else if (jumlah > sisa) galat.jumlah = `Sisa tiket hanya ${sisa}.`;
-
-  if (Object.keys(galat).length > 0) {
-    return {
-      berhasil: false,
-      pesan: "Periksa lagi isian yang merah.",
-      galat,
-      isian,
-    };
-  }
-
+  // Tambah jumlah terisi agar sisa tiket di event berkurang
   event.terisi += jumlah;
-  const nomor = tambahPesanan({
-    eventId,
+
+  const pesananBaru = {
+    nomor: pesanan.length + 1,
+    eventId: event.id,
     judul: event.judul,
-    nama,
-    email,
-    jumlah,
+    nama: nama,
+    email: email,
+    jumlah: jumlah,
     total: event.harga * jumlah,
-    waktu: new Date().toLocaleString("id-ID"),
-  });
-
-  // Simpan nama ke cookie selama 30 hari
-  const toples = await cookies();
-  toples.set("nama", nama, { maxAge: 60 * 60 * 24 * 30 });
-
-  revalidatePath("/event");
-  revalidatePath(`/event/${eventId}`);
-  revalidatePath("/pesanan");
-
-  return {
-    berhasil: true,
-    pesan: `Pesanan #${nomor} tersimpan: ${jumlah} tiket untuk ${nama}.`,
-    galat: {},
-    isian: { nama: "", email: "" },
+    waktu: new Date().toLocaleDateString(),
   };
+
+  pesanan.push(pesananBaru as any);
+
+  redirect("/pesanan");
 }
 
 export async function batalkanPesanan(formData: FormData) {
-  const nomorStr = formData.get("nomor");
-  if (!nomorStr) return;
+  const nomor = Number(formData.get("nomor"));
+  const index = pesanan.findIndex((p: any) => Number(p.nomor) === nomor);
 
-  const nomor = Number(nomorStr);
-  const cookieStore = await cookies();
-  const namaSaya = cookieStore.get("nama")?.value;
-
-  const i = pesanan.findIndex((p) => p.nomor === nomor);
-
-  if (i === -1) return;
-  if (namaSaya && pesanan[i].nama.toLowerCase() !== namaSaya.toLowerCase())
-    return;
-
-  const [batal] = pesanan.splice(i, 1);
-  const event = events.find((e) => e.id === batal.eventId);
-  if (event) {
-    event.terisi -= batal.jumlah;
-    if (event.terisi < 0) event.terisi = 0;
+  if (index !== -1) {
+    const p = pesanan[index];
+    // Menggunakan Number() agar tipe data string dan number aman saat dibandingkan
+    const event = events.find((e) => Number(e.id) === Number(p.eventId));
+    if (event) {
+      event.terisi = Math.max(0, event.terisi - p.jumlah);
+    }
+    pesanan.splice(index, 1);
   }
 
-  revalidatePath("/event");
-  revalidatePath(`/event/${batal.eventId}`);
-  revalidatePath("/pesanan");
+  redirect("/pesanan");
 }

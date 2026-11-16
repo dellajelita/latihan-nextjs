@@ -1,12 +1,21 @@
-import { ambilEvents } from "@/data/ambil";
-import KatalogInteraktif from "@/components/KatalogInteraktif";
+import type { Metadata } from "next";
+import { events } from "@/data/events";
+import KartuEvent from "@/components/KartuEvent";
 
-export default async function Katalog() {
-  const events = await ambilEvents();
+export const metadata: Metadata = {
+  title: "Katalog Event",
+};
+
+export default function EventPage() {
   return (
-    <div>
-      <h1 className="mb-4 text-2xl font-bold">Katalog Event</h1>
-      <KatalogInteraktif events={events} />
-    </div>
+    <main className="max-w-6xl mx-auto p-6">
+      <h1 className="text-2xl font-bold mb-6">Katalog Event</h1>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {events.map((event) => (
+          <KartuEvent key={event.id} event={event} />
+        ))}
+      </div>
+    </main>
   );
 }
