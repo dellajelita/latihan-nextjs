@@ -1,69 +1,53 @@
-import KontrolKatalog from "@/components/KontrolKatalog";
-import Halaman from "@/components/Halaman";
+import Link from "next/link";
+import { ambilEvents } from "@/data/ambil";
 import KartuEvent from "@/components/KartuEvent";
-import { events } from "@/data/events";
-import { bacaSaringan, saringEvents, PER_HALAMAN } from "@/data/saring";
 
-export default async function Page({
+export default async function KatalogEvent({
   searchParams,
 }: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: Promise<{ kategori?: string }>;
 }) {
-  const params = await searchParams;
-  const s = bacaSaringan(params);
+  const { kategori } = await searchParams;
+  const semua = await ambilEvents();
+  const daftarKategori = ["Semua", ...new Set(semua.map((e) => e.kategori))];
 
-  const daftarKategori = [
-    "Semua",
-    ...Array.from(new Set(events.map((e) => e.kategori))),
-  ];
-  const semuaEventSaring = saringEvents(events, s);
-
-  const jumlahHalaman = Math.ceil(semuaEventSaring.length / PER_HALAMAN);
-  const halAktif = Math.min(s.hal, jumlahHalaman || 1);
-  const eventTampil = semuaEventSaring.slice(
-    (halAktif - 1) * PER_HALAMAN,
-    halAktif * PER_HALAMAN,
-  );
-
-  const totalSisaTiket = semuaEventSaring.reduce(
-    (acc, e) => acc + (e.kuota - e.terisi),
-    0,
-  );
-  const rataRataHarga =
-    semuaEventSaring.length > 0
-      ? Math.round(
-          semuaEventSaring.reduce((acc, e) => acc + e.harga, 0) /
-            semuaEventSaring.length,
-        )
-      : 0;
+  const hasil =
+    kategori && kategori !== "Semua"
+      ? semua.filter((e) => e.kategori.toLowerCase() === kategori.toLowerCase())
+      : semua;
 
   return (
-    <div className="container mx-auto px-4 py-6">
-      <h1 className="mb-4 text-2xl font-bold">Katalog Event</h1>
+    <div>
+      <h1 className="mb-4 text-2xl font-bold">Semua Event</h1>
 
-      <KontrolKatalog
-        key={JSON.stringify(s)}
-        s={s}
-        daftarKategori={daftarKategori}
-      />
-
-      <div className="mb-4 text-sm text-gray-600">
-        {semuaEventSaring.length} event ditemukan · Rata-rata harga Rp{" "}
-        {rataRataHarga.toLocaleString("id-ID")} · Total sisa tiket{" "}
-        {totalSisaTiket}
+      <div className="mb-6 flex flex-wrap gap-2">
+        {daftarKategori.map((kat) => {
+          const aktif = (kategori ?? "Semua") === kat;
+          return (
+            <Link
+              key={kat}
+              href={kat === "Semua" ? "/event" : `/event?kategori=${kat}`}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium ${
+                aktif
+                  ? "bg-blue-600 text-white"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              {kat}
+            </Link>
+          );
+        })}
       </div>
 
-      {eventTampil.length === 0 ? (
-        <p className="text-gray-500">Tidak ada event yang cocok.</p>
+      {hasil.length === 0 ? (
+        <p className="text-slate-500">Tidak ada event pada kategori ini.</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {eventTampil.map((e) => (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {hasil.map((e) => (
             <KartuEvent key={e.id} event={e} />
           ))}
         </div>
       )}
-
-      <Halaman s={s} hal={halAktif} jumlah={jumlahHalaman} />
     </div>
   );
 }

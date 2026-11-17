@@ -1,5 +1,6 @@
-import { events } from "@/data/events";
+import { ambilEvents } from "@/data/ambil";
 
 export async function GET() {
+  const events = await ambilEvents();
   return Response.json(events);
 }

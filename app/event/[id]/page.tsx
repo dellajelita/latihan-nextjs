@@ -2,32 +2,34 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { events, rupiah } from "@/data/events";
+import { events, rupiah, type Event } from "@/data/events";
 import { useParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { tambahPesanan } from "@/app/actions";
 
 export default function DetailEventPage() {
   const params = useParams();
   const id = params?.id;
 
-  const event = events.find((e) => String(e.id) === String(id));
+  const event = events.find((e: Event) => String(e.id) === String(id));
 
   const [jumlah, setJumlah] = useState(1);
   const [nama, setNama] = useState("Della Jelita");
-  const [isFavorit, setIsFavorit] = useState(false);
 
-  useEffect(() => {
-    if (event) {
+  // Inisialisasi state favorit langsung dari localStorage tanpa useEffect untuk menghindari error linter
+  const [isFavorit, setIsFavorit] = useState<boolean>(() => {
+    if (typeof window === "undefined" || !event) return false;
+    try {
       const existingFavorit = JSON.parse(
         localStorage.getItem("daftar_favorit") || "[]",
       );
-      const status = existingFavorit.some(
-        (fav: any) => Number(fav.id) === Number(event.id),
+      return existingFavorit.some(
+        (fav: Event) => Number(fav.id) === Number(event.id),
       );
-      setIsFavorit(status);
+    } catch {
+      return false;
     }
-  }, [event]);
+  });
 
   if (!event) {
     return (
@@ -49,7 +51,8 @@ export default function DetailEventPage() {
   const sisaTiket = event.kuota - event.terisi;
   const eventTerkait = events
     .filter(
-      (e) => e.kategori === event.kategori && String(e.id) !== String(event.id),
+      (e: Event) =>
+        e.kategori === event.kategori && String(e.id) !== String(event.id),
     )
     .slice(0, 2);
 
@@ -61,7 +64,7 @@ export default function DetailEventPage() {
 
     if (isFavorit) {
       updatedFavorit = existingFavorit.filter(
-        (fav: any) => Number(fav.id) !== Number(event.id),
+        (fav: Event) => Number(fav.id) !== Number(event.id),
       );
       setIsFavorit(false);
     } else {
@@ -97,7 +100,6 @@ export default function DetailEventPage() {
             </p>
           </div>
 
-          {/* Tombol Ikon Love Favorit (Pastikan tanda tanya ? ada di sini) */}
           <button
             type="button"
             onClick={toggleFavorit}
@@ -194,7 +196,7 @@ export default function DetailEventPage() {
           <section className="mt-8 border-t pt-6">
             <h3 className="font-bold mb-2">Event terkait</h3>
             <ul className="space-y-1">
-              {eventTerkait.map((item) => (
+              {eventTerkait.map((item: Event) => (
                 <li key={item.id}>
                   <Link
                     href={`/event/${item.id}`}

@@ -1,5 +1,5 @@
 export type Event = {
-  id: string;
+  id: string | number;
   judul: string;
   tanggal: string;
   lokasi: string;
@@ -8,7 +8,7 @@ export type Event = {
   harga: number;
   kuota: number;
   terisi: number;
-  gambar?: string;
+  gambar?: string | null;
 };
 
 export function rupiah(angka: number): string {

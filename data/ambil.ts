@@ -1,23 +1,45 @@
-import { events, type Event } from "@/data/events";
+import { type Event } from "@/data/events";
+import { supabase } from "@/lib/supabase";
 
-// Pura-pura mengambil data dari database yang agak lambat.
-function jeda(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+export async function ambilEvents(): Promise<Event[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .order("tanggal");
+
+  if (error) {
+    console.error("Gagal memuat events:", error.message);
+    throw new Error("Gagal memuat event: " + error.message);
+  }
+  return data as Event[];
 }
 
-export async function ambilEvents() {
-  await jeda(1500);
-  return events;
+export async function ambilEvent(
+  id: number | string,
+): Promise<Event | undefined> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) {
+    console.error("Gagal memuat detail event:", error.message);
+    return undefined;
+  }
+  return data as Event;
 }
 
-export async function ambilEvent(id: number) {
-  await jeda(800);
-  return events.find((e) => e.id === id);
-}
+export async function ambilTerkait(event: Event): Promise<Event[]> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("*")
+    .eq("kategori", event.kategori)
+    .neq("id", event.id);
 
-export async function ambilTerkait(event: Event) {
-  await jeda(2000);
-  return events.filter(
-    (e) => e.kategori === event.kategori && e.id !== event.id,
-  );
+  if (error) {
+    console.error("Gagal memuat event terkait:", error.message);
+    return [];
+  }
+  return data as Event[];
 }
