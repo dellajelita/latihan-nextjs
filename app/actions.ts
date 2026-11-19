@@ -1,140 +1,138 @@
 "use server";
 
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { ambilEvent } from "@/data/ambil";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 
-export interface HasilPesan {
+export type HasilPesan = {
   berhasil: boolean;
   pesan: string;
-  galat: {
-    nama?: string;
-    email?: string;
-    jumlah?: string;
-  };
-  isian: {
-    nama: string;
-    email: string;
-  };
-}
+  galat: { nama?: string; email?: string; jumlah?: string };
+  isian: { nama: string; email: string };
+};
 
 export async function pesanTiket(
-  _sebelumnya: HasilPesan,
+  _sebelum: HasilPesan,
   formData: FormData,
 ): Promise<HasilPesan> {
   const eventId = Number(formData.get("eventId"));
-  const nama = ((formData.get("nama") as string) ?? "").trim();
-  const email = ((formData.get("email") as string) ?? "").trim();
+  const nama = String(formData.get("nama") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
   const jumlah = Number(formData.get("jumlah"));
+  const isian = { nama, email };
 
+  // Jangan percaya browser: baca event dari database, bukan dari formulir
+  const event = await ambilEvent(eventId);
+  if (!event) {
+    return {
+      berhasil: false,
+      pesan: "Event tidak ditemukan.",
+      galat: {},
+      isian,
+    };
+  }
+
+  const sisa = event.kuota - event.terisi;
   const galat: HasilPesan["galat"] = {};
-  if (!nama) galat.nama = "Nama pemesan wajib diisi.";
-  if (!email || !email.includes("@")) galat.email = "Email tidak valid.";
+  if (nama.length < 3) galat.nama = "Nama minimal 3 huruf.";
+  else if (nama.length > 40) galat.nama = "Nama maksimal 40 huruf.";
+  if (!email.includes("@")) galat.email = "Email harus memuat tanda @.";
   if (!Number.isInteger(jumlah) || jumlah < 1) {
     galat.jumlah = "Jumlah tiket minimal 1.";
+  } else if (jumlah > 5) {
+    galat.jumlah = "Maksimal 5 tiket per pesanan.";
+  } else if (jumlah > sisa) {
+    galat.jumlah = `Sisa tiket hanya ${sisa}.`;
   }
 
   if (Object.keys(galat).length > 0) {
     return {
       berhasil: false,
-      pesan: "Periksa kembali isian formulir.",
+      pesan: "Periksa lagi isian yang merah.",
       galat,
-      isian: { nama, email },
+      isian,
     };
   }
 
-  const { data: event, error: errEvent } = await supabaseAdmin
-    .from("events")
-    .select("*")
-    .eq("id", eventId)
-    .maybeSingle();
+  const { data: baru, error } = await supabaseAdmin
+    .from("pesanan")
+    .insert({
+      event_id: eventId,
+      nama,
+      email,
+      jumlah,
+      total: event.harga * jumlah,
+    })
+    .select("nomor")
+    .single();
 
-  if (errEvent || !event) {
+  if (error) {
     return {
       berhasil: false,
-      pesan: "Event tidak ditemukan.",
+      pesan: "Pesanan gagal disimpan. Coba lagi.",
       galat: {},
-      isian: { nama, email },
+      isian,
     };
   }
 
-  const sisa = event.kuota - event.terisi;
-  if (jumlah > sisa) {
-    return {
-      berhasil: false,
-      pesan: `Sisa tiket hanya ${sisa}.`,
-      galat: { jumlah: `Maksimal ${sisa} tiket.` },
-      isian: { nama, email },
-    };
-  }
-
-  const { error: errInsert } = await supabaseAdmin.from("pesanan").insert({
-    event_id: event.id,
-    nama,
-    email,
-    jumlah,
-    total: event.harga * jumlah,
-  });
-
-  if (errInsert) {
-    return {
-      berhasil: false,
-      pesan: "Gagal menyimpan pesanan: " + errInsert.message,
-      galat: {},
-      isian: { nama, email },
-    };
-  }
-
-  const { error: errUpdate } = await supabaseAdmin
+  // Tantangan 1: perkecil celah race condition dengan syarat nilai terisi saat ini
+  const { data: terupdate, error: galatKuota } = await supabaseAdmin
     .from("events")
     .update({ terisi: event.terisi + jumlah })
-    .eq("id", event.id);
+    .eq("id", eventId)
+    .eq("terisi", event.terisi)
+    .select("id");
 
-  if (errUpdate) {
+  if (galatKuota || !terupdate || terupdate.length === 0) {
     return {
       berhasil: false,
-      pesan:
-        "Pesanan tersimpan, tetapi gagal memperbarui kuota: " +
-        errUpdate.message,
+      pesan: "Tiket baru saja berubah, coba lagi.",
       galat: {},
-      isian: { nama, email },
+      isian,
     };
   }
 
+  const toples = await cookies();
+  toples.set("nama", nama, { maxAge: 60 * 60 * 24 * 30 });
+
   revalidatePath("/event");
-  revalidatePath(`/event/${event.id}`);
+  revalidatePath(`/event/${eventId}`);
   revalidatePath("/pesanan");
-  redirect("/pesanan");
+
+  return {
+    berhasil: true,
+    pesan: `Pesanan #${baru.nomor} tersimpan: ${jumlah} tiket untuk ${nama}.`,
+    galat: {},
+    isian: { nama, email: "" },
+  };
 }
 
 export async function batalkanPesanan(formData: FormData) {
-  const nomor = Number(formData.get("nomor") ?? formData.get("id"));
-  if (!Number.isInteger(nomor)) return;
+  const nomor = Number(formData.get("nomor"));
+  const namaSaya = (await cookies()).get("nama")?.value;
+  if (!Number.isInteger(nomor) || !namaSaya) return;
 
-  const { data: pesanan } = await supabaseAdmin
+  // Syarat kepemilikan ikut dalam perintah hapus: pesanan orang lain tidak akan terhapus
+  const { data: batal } = await supabaseAdmin
     .from("pesanan")
-    .select("*")
+    .delete()
     .eq("nomor", nomor)
+    .eq("nama", namaSaya)
+    .select()
     .maybeSingle();
 
-  if (pesanan) {
-    const { data: event } = await supabaseAdmin
+  if (!batal) return;
+
+  const event = await ambilEvent(batal.event_id);
+  if (event) {
+    await supabaseAdmin
       .from("events")
-      .select("*")
-      .eq("id", pesanan.event_id)
-      .maybeSingle();
-
-    if (event) {
-      await supabaseAdmin
-        .from("events")
-        .update({ terisi: Math.max(0, event.terisi - pesanan.jumlah) })
-        .eq("id", event.id);
-    }
-
-    await supabaseAdmin.from("pesanan").delete().eq("nomor", nomor);
+      .update({ terisi: Math.max(0, event.terisi - batal.jumlah) })
+      .eq("id", batal.event_id);
   }
 
   revalidatePath("/event");
+  revalidatePath(`/event/${batal.event_id}`);
   revalidatePath("/pesanan");
-  redirect("/pesanan");
 }

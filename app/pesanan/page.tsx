@@ -1,24 +1,26 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { cookies } from "next/headers";
-import { pesanan } from "@/data/pesanan";
+import Link from "next/link";
+import { ambilPesanan } from "@/data/ambil";
 import { rupiah } from "@/data/events";
 import { batalkanPesanan } from "@/app/actions";
 
-export default async function HalamanPesanan() {
-  const cookieStore = await cookies();
-  const namaCookie = cookieStore.get("nama")?.value ?? "";
+export const metadata: Metadata = { title: "Daftar Pesanan" };
 
+export default async function HalamanPesanan() {
+  const pesanan = await ambilPesanan();
+  const namaSaya = (await cookies()).get("nama")?.value ?? "";
   const totalTiket = pesanan.reduce((t, p) => t + p.jumlah, 0);
   const pendapatan = pesanan.reduce((t, p) => t + p.total, 0);
 
   return (
     <div>
       <h1 className="mb-2 text-2xl font-bold">Daftar Pesanan</h1>
-
-      {namaCookie && (
-        <p className="mb-2 font-medium text-blue-600">Halo, {namaCookie}!</p>
+      {namaSaya && (
+        <p className="mb-2 text-slate-600">
+          Halo, {namaSaya}! Pesananmu ditandai &quot;Kamu&quot;.
+        </p>
       )}
-
       {pesanan.length === 0 ? (
         <p className="text-slate-500">
           Belum ada pesanan.{" "}
@@ -40,42 +42,38 @@ export default async function HalamanPesanan() {
                 <th className="p-2">Pemesan</th>
                 <th className="p-2">Tiket</th>
                 <th className="p-2">Total</th>
-                <th className="p-2">Aksi</th>
+                <th className="p-2"></th>
               </tr>
             </thead>
             <tbody>
-              {pesanan.map((p) => {
-                const isPunyaSaya =
-                  namaCookie &&
-                  p.nama.toLowerCase() === namaCookie.toLowerCase();
-
-                return (
-                  <tr key={p.nomor} className="border-t">
-                    <td className="p-2">{p.nomor}</td>
-                    <td className="p-2">{p.judul}</td>
-                    <td className="p-2 flex items-center gap-2">
-                      <span>{p.nama}</span>
-                      {isPunyaSaya && (
-                        <span className="rounded bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                          Kamu
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-2">{p.jumlah}</td>
-                    <td className="p-2">{rupiah(p.total)}</td>
-                    <td className="p-2">
-                      {isPunyaSaya && (
-                        <form action={batalkanPesanan}>
-                          <input type="hidden" name="nomor" value={p.nomor} />
-                          <button className="text-red-600 underline text-sm hover:text-red-800">
-                            Batalkan
-                          </button>
-                        </form>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {pesanan.map((p) => (
+                <tr key={p.nomor} className="border-t">
+                  <td className="p-2">{p.nomor}</td>
+                  <td className="p-2">
+                    {p.events?.judul ?? "(event dihapus)"}
+                  </td>
+                  <td className="p-2">
+                    {p.nama}
+                    {p.nama === namaSaya && (
+                      <span className="ml-2 rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
+                        Kamu
+                      </span>
+                    )}
+                  </td>
+                  <td className="p-2">{p.jumlah}</td>
+                  <td className="p-2">{rupiah(p.total)}</td>
+                  <td className="p-2">
+                    {p.nama === namaSaya && (
+                      <form action={batalkanPesanan}>
+                        <input type="hidden" name="nomor" value={p.nomor} />
+                        <button className="text-red-600 underline">
+                          Batalkan
+                        </button>
+                      </form>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </>
