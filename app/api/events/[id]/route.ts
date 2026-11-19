@@ -1,19 +1,15 @@
-import { NextResponse } from "next/server";
-import { events } from "@/data/events";
+import { ambilEvent } from "@/data/ambil";
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } },
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const event = events.find((e) => String(e.id) === id);
+  const { id } = await context.params;
+  const event = await ambilEvent(Number(id));
 
   if (!event) {
-    return NextResponse.json(
-      { pesan: "Event tidak ditemukan" },
-      { status: 404 },
-    );
+    return Response.json({ pesan: "Event tidak ditemukan" }, { status: 404 });
   }
 
-  return NextResponse.json(event);
+  return Response.json(event);
 }

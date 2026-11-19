@@ -1,61 +1,140 @@
 "use server";
 
-import { pesanan } from "@/data/pesanan";
-import { events, type Event } from "@/data/events";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-export interface Pesanan {
-  nomor: number;
-  eventId: number;
-  judul: string;
-  nama: string;
-  email: string;
-  jumlah: number;
-  total: number;
-  waktu: string;
+export interface HasilPesan {
+  berhasil: boolean;
+  pesan: string;
+  galat: {
+    nama?: string;
+    email?: string;
+    jumlah?: string;
+  };
+  isian: {
+    nama: string;
+    email: string;
+  };
 }
 
-export async function tambahPesanan(formData: FormData) {
+export async function pesanTiket(
+  _sebelumnya: HasilPesan,
+  formData: FormData,
+): Promise<HasilPesan> {
   const eventId = Number(formData.get("eventId"));
-  const nama = (formData.get("nama") as string) || "Della Jelita";
-  const email = (formData.get("email") as string) || "";
-  const jumlah = Number(formData.get("jumlah")) || 1;
+  const nama = ((formData.get("nama") as string) ?? "").trim();
+  const email = ((formData.get("email") as string) ?? "").trim();
+  const jumlah = Number(formData.get("jumlah"));
 
-  const event = events.find((e: Event) => Number(e.id) === eventId);
-  if (!event) return;
+  const galat: HasilPesan["galat"] = {};
+  if (!nama) galat.nama = "Nama pemesan wajib diisi.";
+  if (!email || !email.includes("@")) galat.email = "Email tidak valid.";
+  if (!Number.isInteger(jumlah) || jumlah < 1) {
+    galat.jumlah = "Jumlah tiket minimal 1.";
+  }
 
-  // Tambah jumlah terisi agar sisa tiket di event berkurang
-  event.terisi += jumlah;
+  if (Object.keys(galat).length > 0) {
+    return {
+      berhasil: false,
+      pesan: "Periksa kembali isian formulir.",
+      galat,
+      isian: { nama, email },
+    };
+  }
 
-  const pesananBaru: Pesanan = {
-    nomor: pesanan.length + 1,
-    eventId: Number(event.id), // Pastikan berupa number
-    judul: event.judul,
-    nama: nama,
-    email: email,
-    jumlah: jumlah,
+  const { data: event, error: errEvent } = await supabaseAdmin
+    .from("events")
+    .select("*")
+    .eq("id", eventId)
+    .maybeSingle();
+
+  if (errEvent || !event) {
+    return {
+      berhasil: false,
+      pesan: "Event tidak ditemukan.",
+      galat: {},
+      isian: { nama, email },
+    };
+  }
+
+  const sisa = event.kuota - event.terisi;
+  if (jumlah > sisa) {
+    return {
+      berhasil: false,
+      pesan: `Sisa tiket hanya ${sisa}.`,
+      galat: { jumlah: `Maksimal ${sisa} tiket.` },
+      isian: { nama, email },
+    };
+  }
+
+  const { error: errInsert } = await supabaseAdmin.from("pesanan").insert({
+    event_id: event.id,
+    nama,
+    email,
+    jumlah,
     total: event.harga * jumlah,
-    waktu: new Date().toLocaleDateString(),
-  };
+  });
 
-  pesanan.push(pesananBaru);
+  if (errInsert) {
+    return {
+      berhasil: false,
+      pesan: "Gagal menyimpan pesanan: " + errInsert.message,
+      galat: {},
+      isian: { nama, email },
+    };
+  }
 
+  const { error: errUpdate } = await supabaseAdmin
+    .from("events")
+    .update({ terisi: event.terisi + jumlah })
+    .eq("id", event.id);
+
+  if (errUpdate) {
+    return {
+      berhasil: false,
+      pesan:
+        "Pesanan tersimpan, tetapi gagal memperbarui kuota: " +
+        errUpdate.message,
+      galat: {},
+      isian: { nama, email },
+    };
+  }
+
+  revalidatePath("/event");
+  revalidatePath(`/event/${event.id}`);
+  revalidatePath("/pesanan");
   redirect("/pesanan");
 }
 
 export async function batalkanPesanan(formData: FormData) {
-  const nomor = Number(formData.get("nomor"));
-  const index = pesanan.findIndex((p: Pesanan) => Number(p.nomor) === nomor);
+  const nomor = Number(formData.get("nomor") ?? formData.get("id"));
+  if (!Number.isInteger(nomor)) return;
 
-  if (index !== -1) {
-    const p = pesanan[index];
-    // Menggunakan Number() agar tipe data string dan number aman saat dibandingkan
-    const event = events.find((e: Event) => Number(e.id) === Number(p.eventId));
+  const { data: pesanan } = await supabaseAdmin
+    .from("pesanan")
+    .select("*")
+    .eq("nomor", nomor)
+    .maybeSingle();
+
+  if (pesanan) {
+    const { data: event } = await supabaseAdmin
+      .from("events")
+      .select("*")
+      .eq("id", pesanan.event_id)
+      .maybeSingle();
+
     if (event) {
-      event.terisi = Math.max(0, event.terisi - p.jumlah);
+      await supabaseAdmin
+        .from("events")
+        .update({ terisi: Math.max(0, event.terisi - pesanan.jumlah) })
+        .eq("id", event.id);
     }
-    pesanan.splice(index, 1);
+
+    await supabaseAdmin.from("pesanan").delete().eq("nomor", nomor);
   }
 
+  revalidatePath("/event");
+  revalidatePath("/pesanan");
   redirect("/pesanan");
 }

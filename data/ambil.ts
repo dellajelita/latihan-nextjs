@@ -1,33 +1,26 @@
-import { type Event } from "@/data/events";
 import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import type { Event } from "@/data/events";
 
 export async function ambilEvents(): Promise<Event[]> {
   const { data, error } = await supabase
     .from("events")
     .select("*")
     .order("tanggal");
-
-  if (error) {
-    console.error("Gagal memuat events:", error.message);
-    throw new Error("Gagal memuat event: " + error.message);
-  }
+  if (error) throw new Error("Gagal memuat event: " + error.message);
   return data as Event[];
 }
 
-export async function ambilEvent(
-  id: number | string,
-): Promise<Event | undefined> {
+export async function ambilEvent(id: number): Promise<Event | null> {
+  // Isi URL bisa apa saja (misalnya /event/abc). Periksa dulu sebelum bertanya ke database.
+  if (!Number.isInteger(id)) return null;
   const { data, error } = await supabase
     .from("events")
     .select("*")
     .eq("id", id)
-    .single();
-
-  if (error) {
-    console.error("Gagal memuat detail event:", error.message);
-    return undefined;
-  }
-  return data as Event;
+    .maybeSingle();
+  if (error) throw new Error("Gagal memuat event: " + error.message);
+  return data as Event | null;
 }
 
 export async function ambilTerkait(event: Event): Promise<Event[]> {
@@ -35,11 +28,37 @@ export async function ambilTerkait(event: Event): Promise<Event[]> {
     .from("events")
     .select("*")
     .eq("kategori", event.kategori)
-    .neq("id", event.id);
-
-  if (error) {
-    console.error("Gagal memuat event terkait:", error.message);
-    return [];
-  }
+    .neq("id", event.id)
+    .order("tanggal");
+  if (error) throw new Error("Gagal memuat event terkait: " + error.message);
   return data as Event[];
+}
+
+// Pesanan berisi nama dan email orang, jadi dibaca memakai kunci rahasia (hanya di server).
+export async function hitungPesanan(eventId: number): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from("pesanan")
+    .select("*", { count: "exact", head: true })
+    .eq("event_id", eventId);
+  if (error) {
+    throw new Error("Gagal menghitung pesanan: " + error.message);
+  }
+  return count ?? 0;
+}
+
+export async function ringkasanPesanan(eventId: number): Promise<{
+  jumlahPesanan: number;
+  totalTiket: number;
+}> {
+  const { data, error } = await supabaseAdmin
+    .from("pesanan")
+    .select("jumlah")
+    .eq("event_id", eventId);
+  if (error) {
+    throw new Error("Gagal memuat ringkasan pesanan: " + error.message);
+  }
+  const rows = data ?? [];
+  const jumlahPesanan = rows.length;
+  const totalTiket = rows.reduce((total, row) => total + (row.jumlah ?? 0), 0);
+  return { jumlahPesanan, totalTiket };
 }
