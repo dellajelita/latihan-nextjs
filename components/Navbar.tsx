@@ -64,6 +64,16 @@ export default function Navbar() {
         Tentang
       </Link>
       <Link
+        href="/admin"
+        className={
+          pathname === "/admin" || pathname.startsWith("/admin/")
+            ? "font-bold text-blue-600"
+            : "text-slate-600 hover:text-blue-600"
+        }
+      >
+        Admin
+      </Link>
+      <Link
         href="/kontak"
         className={
           pathname === "/kontak"
