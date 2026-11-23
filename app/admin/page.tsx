@@ -2,10 +2,16 @@ import Link from "next/link";
 import { ambilEvents } from "@/data/ambil";
 import { rupiah } from "@/data/events";
 import { hapusEvent } from "@/app/admin/actions";
+import TombolHapusEvent from "@/components/TombolHapusEvent";
 
 export default async function Admin({ searchParams }: PageProps<"/admin">) {
-  const { info, galat } = await searchParams;
-  const events = await ambilEvents();
+  const { info, galat, q } = await searchParams;
+  const kataKunci = typeof q === "string" ? q.trim().toLowerCase() : "";
+  const semuaEvent = await ambilEvents();
+  const events = kataKunci
+    ? semuaEvent.filter((e) => e.judul.toLowerCase().includes(kataKunci))
+    : semuaEvent;
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -17,6 +23,31 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
           Tambah event
         </Link>
       </div>
+
+      <form method="GET" action="/admin" className="mb-4 flex gap-2">
+        <input
+          type="text"
+          name="q"
+          defaultValue={typeof q === "string" ? q : ""}
+          placeholder="Cari judul event..."
+          className="w-full max-w-xs rounded border bg-white px-3 py-1.5 text-sm"
+        />
+        <button
+          type="submit"
+          className="rounded bg-slate-800 px-3 py-1.5 text-sm text-white hover:bg-slate-700"
+        >
+          Cari
+        </button>
+        {kataKunci && (
+          <Link
+            href="/admin"
+            className="rounded border px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+          >
+            Reset
+          </Link>
+        )}
+      </form>
+
       {typeof info === "string" && (
         <p className="mb-3 rounded bg-green-100 px-3 py-2 text-green-800">
           {info}
@@ -55,7 +86,7 @@ export default async function Admin({ searchParams }: PageProps<"/admin">) {
                 </Link>
                 <form action={hapusEvent}>
                   <input type="hidden" name="id" value={e.id} />
-                  <button className="text-red-600 underline">Hapus</button>
+                  <TombolHapusEvent judul={e.judul} />
                 </form>
               </td>
             </tr>
